@@ -44,6 +44,7 @@ FAKE = os.environ.get("VLE_FAKE_MODEL") == "1"
 LOGIN_DIR = WORK_DIR / "scripts"
 AUTH_FILE = Path.home() / ".cursor" / "sdk" / "auth.json"
 _RESOLVED_KEY: str | None = None
+_BRIDGE_PATCHED = False
 
 # Empty allowlist: the SDK offers no built-in tools, so the model can only talk.
 TEXT_TOOLS: list[str] = []
@@ -311,6 +312,84 @@ def resolve_api_key() -> str:
     return key
 
 
+def install_windows_bridge_fix() -> None:
+    """Windows select() cannot wait on the bridge pipe. Poll the pipe instead."""
+    global _BRIDGE_PATCHED
+    if _BRIDGE_PATCHED or os.name != "nt":
+        return
+    import codecs
+
+    import cursor_sdk._bridge as bridge
+
+    def _read_discovery(process, timeout):
+        if process.stderr is None:
+            raise bridge.CursorSDKError("Bridge process stderr is unavailable")
+        stderr_fd = process.stderr.fileno()
+        was_blocking = os.get_blocking(stderr_fd)
+        os.set_blocking(stderr_fd, False)
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        deadline = time.monotonic() + timeout
+        stderr_lines: list[str] = []
+        pending = ""
+
+        def take_line(line: str):
+            stderr_lines.append(line)
+            return bridge.parse_discovery_line(line)
+
+        try:
+            while time.monotonic() < deadline:
+                chunk: bytes | None
+                try:
+                    chunk = os.read(stderr_fd, 8192)
+                except (BlockingIOError, InterruptedError):
+                    chunk = None
+                except OSError as err:
+                    if getattr(err, "winerror", None) in (232, 10035):
+                        chunk = None
+                    else:
+                        raise
+                if chunk:
+                    pending += decoder.decode(chunk)
+                    while "\n" in pending:
+                        line, pending = pending.split("\n", 1)
+                        found = take_line(line + "\n")
+                        if found is not None:
+                            return found
+                elif chunk == b"":
+                    pending += decoder.decode(b"", final=True)
+                    if pending:
+                        found = take_line(pending if pending.endswith("\n") else pending + "\n")
+                        if found is not None:
+                            return found
+                    raise bridge.CursorSDKError(
+                        "Bridge exited before discovery with status "
+                        f"{process.poll()}: {''.join(stderr_lines)}{pending}"
+                    )
+                if process.poll() is not None:
+                    try:
+                        extra = os.read(stderr_fd, 8192)
+                    except OSError:
+                        extra = b""
+                    if extra:
+                        pending += decoder.decode(extra)
+                    while "\n" in pending:
+                        line, pending = pending.split("\n", 1)
+                        found = take_line(line + "\n")
+                        if found is not None:
+                            return found
+                    raise bridge.CursorSDKError(
+                        "Bridge exited before discovery with status "
+                        f"{process.poll()}: {''.join(stderr_lines)}{pending}"
+                    )
+                time.sleep(0.05)
+            raise bridge.CursorSDKError("Timed out waiting for bridge discovery")
+        finally:
+            os.set_blocking(stderr_fd, was_blocking)
+
+    bridge._read_discovery = _read_discovery
+    _BRIDGE_PATCHED = True
+
+
 def one_shot(
     system: str,
     user: str,
@@ -322,6 +401,7 @@ def one_shot(
         record.append(list(tools))
     if FAKE:
         return fake_model(system, user)
+    install_windows_bridge_fix()
     from cursor_sdk import Agent, AgentOptions, CursorAgentError, LocalAgentOptions
 
     try:
@@ -368,6 +448,7 @@ class TextSession:
             self.record.append(list(TEXT_TOOLS))
         if FAKE:
             return self
+        install_windows_bridge_fix()
         from cursor_sdk import Agent, AgentOptions, CursorAgentError, LocalAgentOptions
 
         try:
@@ -750,7 +831,7 @@ def main() -> int:
     question = " ".join(args) or input(f"Ask {AGENT_NAME}: ")
     try:
         print(run_pipeline(question, show=show))
-    except RuntimeError as err:
+    except (RuntimeError, OSError) as err:
         print(f"Model call failed: {err}")
         return 1
     return 0

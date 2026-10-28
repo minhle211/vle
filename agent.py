@@ -24,6 +24,7 @@ Rules live in RULES.md. Skills live in skills/. Both are loaded at run time.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import re
@@ -31,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 AGENT_NAME = "VLe"
@@ -45,6 +47,10 @@ LOGIN_DIR = WORK_DIR / "scripts"
 AUTH_FILE = Path.home() / ".cursor" / "sdk" / "auth.json"
 _RESOLVED_KEY: str | None = None
 _BRIDGE_PATCHED = False
+StageHook = Callable[[str, str], None]
+STAGE_HOOK: contextvars.ContextVar[StageHook | None] = contextvars.ContextVar(
+    "vle_stage_hook", default=None
+)
 
 # Empty allowlist: the SDK offers no built-in tools, so the model can only talk.
 TEXT_TOOLS: list[str] = []
@@ -494,6 +500,9 @@ class TextSession:
 
 def mark(stages: list[str], show: bool, name: str, text: str) -> None:
     stages.append(name)
+    hook = STAGE_HOOK.get()
+    if hook is not None:
+        hook(name, text)
     if show:
         print(f"\n--- {name} ---\n{text}")
 

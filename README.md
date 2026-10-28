@@ -25,6 +25,8 @@ A plain question is 9 Cursor agent runs: the router, three debaters times two ro
 | --- | --- |
 | `agent.py` | The pipeline and the Cursor calls. |
 | `vle.py` | Launcher: `py vle.py "your question"`. |
+| `chat.py` | Local chat window: `py chat.py`. |
+| `chat.html` | The chat page served by `chat.py`. |
 | `RULES.md` | Precision, debate, and pipeline rules. Edit this to change how VLe answers. |
 | `skills/rea/` | `reverse-engineer-anything` from [morluto/rea](https://github.com/morluto/rea), plus its MIT license. |
 | `skills/engineering/` | 25 skills and `references/` from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills), plus its MIT license. |
@@ -55,6 +57,18 @@ The fake runtime walks the whole pipeline offline, with no sign-in and no networ
 ```powershell
 py agent.py --selftest
 ```
+
+## Chat
+
+Open the same agent as a chat window:
+
+```powershell
+py chat.py
+```
+
+That serves the page at `http://127.0.0.1:8765` and opens it in the browser. Each message runs the pipeline above. The page keeps the thread and sends earlier turns with the next question, so a follow-up to an interview question stays in the same conversation. Check **Show the argument** to see the brief, the rounds, and the verdict under the reply.
+
+A full debate still takes several Cursor runs. The window shows the current stage while it works, and it answers one message at a time.
 
 Mac/Linux: same steps with `python3`.
 

@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VLe</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #efeae2;
+      --paper: #f7f3ec;
+      --ink: #1b1714;
+      --muted: #6e675f;
+      --line: #e0d6c8;
+      --user: #243044;
+      --user-ink: #f7f4ef;
+      --bubble: #fffdf9;
+      --accent: #8f3d2a;
+      --focus: #1d4e89;
+      --danger: #8f2d2d;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #141210;
+        --paper: #1c1916;
+        --ink: #f4efe8;
+        --muted: #b3a89c;
+        --line: #3c352e;
+        --user: #31445f;
+        --user-ink: #f7f4ef;
+        --bubble: #26221e;
+        --accent: #e7b1a0;
+        --focus: #9ec1e8;
+        --danger: #ffb4b4;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.5 "Segoe UI", "Helvetica Neue", sans-serif;
+    }
+
+    button, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    :focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .shell {
+      width: min(960px, calc(100% - 1.5rem));
+      height: 100%;
+      margin: 0 auto;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 0.75rem;
+      padding: 1rem 0 0.85rem;
+      overflow: hidden;
+    }
+
+    .top { display: grid; gap: 0.75rem; }
+
+    header, .legend, .composer, .banner {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.9rem 1rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Palatino, "Palatino Linotype", Georgia, serif;
+      font-size: 1.7rem;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+
+    header p, .legend p, .hint, .who, .stage, .empty p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    header p { font-size: 0.92rem; }
+
+    .ghost, .primary {
+      border-radius: 999px;
+      padding: 0.45rem 0.9rem;
+    }
+
+    .ghost {
+      background: transparent;
+      border: 1px solid var(--line);
+    }
+
+    .primary {
+      background: var(--ink);
+      color: var(--bg);
+      border: 0;
+      padding: 0.7rem 1.15rem;
+    }
+
+    .primary:disabled, .ghost:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .banner {
+      margin: 0;
+      padding: 0.65rem 1rem;
+      color: var(--accent);
+    }
+
+    .body {
+      min-height: 0;
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 0.75rem;
+    }
+
+    @media (min-width: 840px) {
+      .body {
+        grid-template-columns: 15rem minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 839px) {
+      .legend { display: none; }
+      .body { grid-template-rows: minmax(0, 1fr); }
+      textarea { min-height: 3.25rem; }
+    }
+
+    .legend { padding: 0.95rem 1rem; }
+    .legend h2 {
+      margin: 0 0 0.45rem;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .legend ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 0.55rem;
+    }
+    .legend, .transcript, .msg { min-width: 0; }
+    .legend strong { display: block; }
+
+    .transcript {
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      padding: 0.2rem 0.15rem 0.4rem;
+    }
+
+    .empty {
+      margin: auto;
+      max-width: 28rem;
+      text-align: center;
+      padding: 2rem 1rem;
+    }
+    .empty h2 {
+      margin: 0 0 0.35rem;
+      font-family: Palatino, "Palatino Linotype", Georgia, serif;
+      font-size: 1.45rem;
+      font-weight: 600;
+    }
+
+    .msg { display: grid; gap: 0.3rem; max-width: 40rem; }
+    .msg.user { margin-left: auto; justify-items: end; }
+    .who { font-size: 0.78rem; }
+    .bubble {
+      padding: 0.8rem 1rem;
+      border-radius: 18px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .msg.user .bubble {
+      background: var(--user);
+      color: var(--user-ink);
+      border-bottom-right-radius: 6px;
+    }
+    .msg.vle .bubble, .msg.pending .bubble {
+      background: var(--bubble);
+      border: 1px solid var(--line);
+      border-bottom-left-radius: 6px;
+      font-family: Palatino, "Palatino Linotype", Georgia, serif;
+      font-size: 1.05rem;
+    }
+    .chip {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .stage { font-family: "Segoe UI", sans-serif; font-size: 0.92rem; }
+    .working {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.2s ease infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dot { animation: none; }
+    }
+    @keyframes pulse {
+      50% { opacity: 0.35; }
+    }
+    details {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    details article {
+      margin-top: 0.7rem;
+      white-space: pre-wrap;
+    }
+    details h3 {
+      margin: 0 0 0.2rem;
+      color: var(--ink);
+      font-size: 0.82rem;
+    }
+    .error { color: var(--danger); }
+
+    .composer { padding: 0.8rem; }
+    label[for="draft"] {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 0.85rem;
+    }
+    textarea {
+      width: 100%;
+      min-height: 4.6rem;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--bubble);
+      padding: 0.75rem 0.85rem;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.65rem;
+      flex-wrap: wrap;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--muted);
+    }
+    .hint { margin-top: 0.55rem; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="top">
+      <header>
+        <div>
+          <h1>VLe</h1>
+          <p>Three debaters argue. The judge picks one answer.</p>
+        </div>
+        <button class="ghost" type="button" id="clear">Clear</button>
+      </header>
+      <p class="banner" id="banner" hidden></p>
+    </div>
+    <div class="body">
+      <aside class="legend">
+        <h2>How a reply is made</h2>
+        <ul>
+          <li><strong>Direct</strong><p>The straightforward reading.</p></li>
+          <li><strong>Skeptic</strong><p>What still stands after doubt.</p></li>
+          <li><strong>Checker</strong><p>Only claims that can be justified.</p></li>
+          <li><strong>Judge</strong><p>Picks one winner. Nothing is blended.</p></li>
+        </ul>
+      </aside>
+      <div class="transcript" id="transcript" aria-live="polite"></div>
+    </div>
+    <form class="composer" id="composer">
+      <label for="draft">Your question</label>
+      <textarea id="draft" name="draft" rows="3" required placeholder="Ask VLe"></textarea>
+      <div class="row">
+        <label class="check">
+          <input id="show" type="checkbox">
+          Show the argument
+        </label>
+        <button class="primary" id="send" type="submit">Send</button>
+      </div>
+      <p class="hint" id="status">A full debate uses several Cursor runs and can take a few minutes. An open question may come back as one question to you.</p>
+    </form>
+  </div>
+  <script>
+    const transcript = document.getElementById("transcript");
+    const draft = document.getElementById("draft");
+    const send = document.getElementById("send");
+    const show = document.getElementById("show");
+    const clearButton = document.getElementById("clear");
+    const statusLine = document.getElementById("status");
+    const banner = document.getElementById("banner");
+    const composer = document.getElementById("composer");
+    const STORE = "vle-chat-v1";
+    const SHOW_STORE = "vle-show-argument";
+
+    let messages = loadMessages();
+    let pending = null;
+    let busy = false;
+
+    show.checked = localStorage.getItem(SHOW_STORE) === "1";
+    show.addEventListener("change", () => {
+      localStorage.setItem(SHOW_STORE, show.checked ? "1" : "0");
+      if (pending) pending.show = show.checked;
+      render();
+    });
+
+    fetch("/api/health")
+      .then((response) => response.json())
+      .then((health) => {
+        if (health.fake) {
+          banner.hidden = false;
+          banner.textContent = "Offline check. Answers are canned, and Cursor is not called.";
+        }
+      })
+      .catch(() => {});
+
+    composer.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitMessage();
+    });
+    draft.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        submitMessage();
+      }
+    });
+    clearButton.addEventListener("click", () => {
+      if (busy) return;
+      messages = [];
+      pending = null;
+      saveMessages();
+      setStatus("The conversation is cleared.");
+      render();
+      draft.focus();
+    });
+
+    render();
+    draft.focus();
+
+    function loadMessages() {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(STORE) || "[]");
+        return Array.isArray(saved) ? saved : [];
+      } catch (err) {
+        return [];
+      }
+    }
+
+    function saveMessages() {
+      sessionStorage.setItem(STORE, JSON.stringify(messages));
+    }
+
+    function setStatus(text) {
+      statusLine.textContent = text;
+    }
+
+    function setBusy(next) {
+      busy = next;
+      send.disabled = next;
+      clearButton.disabled = next;
+      draft.disabled = next;
+      send.textContent = next ? "Working" : "Send";
+    }
+
+    async function submitMessage() {
+      const text = draft.value.trim();
+      if (!text || busy) return;
+      const nextMessages = messages.concat([{ role: "user", text }]);
+      draft.value = "";
+      messages = nextMessages;
+      pending = { stages: [], show: show.checked };
+      saveMessages();
+      setBusy(true);
+      setStatus("VLe is working.");
+      render();
+      let created;
+      try {
+        created = await fetch("/api/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: nextMessages.map((turn) => ({ role: turn.role, text: turn.text }))
+          })
+        });
+      } catch (err) {
+        restoreDraft(text, "The chat could not reach VLe.");
+        return;
+      }
+      let payload = {};
+      try {
+        payload = await created.json();
+      } catch (err) {
+        restoreDraft(text, "VLe sent a reply the page could not read.");
+        return;
+      }
+      if (!created.ok) {
+        restoreDraft(text, payload.error || "VLe could not start.");
+        return;
+      }
+      try {
+        await poll(payload.id);
+      } catch (err) {
+        pending = null;
+        setBusy(false);
+        setStatus(err.message || "The reply failed.");
+        render();
+      }
+    }
+
+    function restoreDraft(text, message) {
+      messages = messages.slice(0, -1);
+      draft.value = text;
+      pending = null;
+      saveMessages();
+      setBusy(false);
+      setStatus(message);
+      render();
+    }
+
+    async function poll(id) {
+      for (;;) {
+        const response = await fetch("/api/messages/" + id);
+        const job = await response.json();
+        if (!response.ok) throw new Error(job.error || "The reply failed.");
+        if (pending) pending.stages = job.stages || [];
+        const latest = pending && pending.stages.length
+          ? pending.stages[pending.stages.length - 1].name
+          : "Starting";
+        if (job.status === "running") {
+          setStatus(latest);
+          render();
+          await wait(500);
+          continue;
+        }
+        pending = null;
+        setBusy(false);
+        if (job.status === "error") {
+          pending = null;
+          setBusy(false);
+          saveMessages();
+          setStatus(job.error || "The reply failed.");
+          render();
+          return;
+        }
+        messages.push({
+          role: "vle",
+          text: job.text,
+          show: show.checked,
+          stages: job.stages || []
+        });
+        saveMessages();
+        setStatus("Reply ready.");
+        render();
+        return;
+      }
+    }
+
+    function wait(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function present(raw) {
+      const winner = /^\[Winner: ([^\]]+)\]\n?([\s\S]*)$/.exec(raw || "");
+      if (winner) return { kind: "answer", winner: winner[1], body: winner[2].trim() };
+      const interview = /^\[Skill: interview-me\]\n?([\s\S]*)$/.exec(raw || "");
+      if (interview) return { kind: "interview", body: interview[1].trim() };
+      return { kind: "answer", body: (raw || "").trim() };
+    }
+
+    function esc(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[ch]));
+    }
+
+    function argumentHtml(stages) {
+      if (!stages || !stages.length) return "";
+      const blocks = stages.map((stage) => (
+        "<article><h3>" + esc(stage.name) + "</h3>" + esc(stage.text || "") + "</article>"
+      )).join("");
+      return "<details><summary>Argument</summary>" + blocks + "</details>";
+    }
+
+    function render() {
+      const near = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 90;
+      if (!messages.length && !pending) {
+        transcript.innerHTML = '<div class="empty"><h2>Ask VLe</h2><p>The reply is one winner, written out in full. If the request is still open, VLe asks a single question and waits.</p></div>';
+        return;
+      }
+      const parts = messages.map((turn) => {
+        if (turn.role === "user") {
+          return '<article class="msg user"><p class="who">You</p><div class="bubble">' + esc(turn.text) + "</div></article>";
+        }
+        const view = present(turn.text);
+        const chip = view.kind === "interview"
+          ? '<p class="chip">One question</p>'
+          : (view.winner ? '<p class="chip">Winner · ' + esc(view.winner) + "</p>" : '<p class="chip">VLe</p>');
+        const extra = show.checked ? argumentHtml(turn.stages) : "";
+        return '<article class="msg vle"><p class="who">VLe</p>' + chip + '<div class="bubble">' + esc(view.body) + "</div>" + extra + "</article>";
+      });
+      if (pending) {
+        const latest = pending.stages.length
+          ? pending.stages[pending.stages.length - 1].name
+          : "Starting";
+        const extra = pending.show ? argumentHtml(pending.stages) : "";
+        parts.push(
+          '<article class="msg pending"><p class="who">VLe</p><div class="bubble"><div class="working"><span class="dot"></span><span class="stage">' +
+          esc(latest) + "</span></div></div>" + extra + "</article>"
+        );
+      }
+      transcript.innerHTML = parts.join("");
+      if (near) transcript.scrollTop = transcript.scrollHeight;
+    }
+  </script>
+</body>
+</html>

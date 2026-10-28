@@ -2,7 +2,7 @@
 
 One question in. REA reads the code first. A skill router picks how to work with you. Three smaller agents argue. The Judge picks one winner. Humanizer rewrites that answer so it reads like a person.
 
-VLe runs as a local Cursor agent through the Python package `cursor-sdk`. Each step is a Cursor agent run on your machine. The key stays in the shell.
+VLe runs as a local Cursor agent through the Python package `cursor-sdk`. Each step is a Cursor agent run on your machine. Sign-in is a browser login. VLe does not use `CURSOR_API_KEY`.
 
 Rules are not in the code. They live in [RULES.md](RULES.md), numbered, and are loaded into every sub-agent at run time. Skills are loaded the same way from `skills/`.
 
@@ -42,22 +42,21 @@ Windows (PowerShell):
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-$env:CURSOR_API_KEY = "cursor_..."
 py vle.py "your question"
 py vle.py --show-debate "your question"
 ```
 
-The key comes from [Cursor Dashboard → Integrations](https://cursor.com/dashboard/integrations). Keep it in the shell. Do not paste it into a file or into chat.
+The first live question opens a browser so you can sign in to Cursor. Node.js 22 or newer is required for that sign-in step. The Cursor SDK writes the login to `~/.cursor/sdk/auth.json` on this computer. Later questions reuse that file. Nothing is placed in the environment, and the key is not printed.
 
 The model defaults to `composer-2.5` because a local Cursor agent requires one. Override it with `CURSOR_MODEL`. Runs stay on this machine, against the folder you point at.
 
-No key yet? The fake runtime walks the whole pipeline offline:
+The fake runtime walks the whole pipeline offline, with no sign-in and no network:
 
 ```powershell
 py agent.py --selftest
 ```
 
-Mac/Linux: same steps with `python3` and `export CURSOR_API_KEY=...`.
+Mac/Linux: same steps with `python3`.
 
 ## Customize
 

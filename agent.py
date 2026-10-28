@@ -9,9 +9,12 @@ Run it (Windows PowerShell):
     py -m venv .venv
     .venv\\Scripts\\Activate.ps1
     pip install -r requirements.txt
-    $env:CURSOR_API_KEY = "cursor_..."    # shell only, never in this file
     py vle.py "your question"
     py vle.py --show-debate "your question"
+
+The first live run opens a browser so you can sign in. Cursor stores that
+login in ~/.cursor/sdk/auth.json. VLe reads that file. It does not use
+CURSOR_API_KEY.
 
 Test it with no key and no network (fake runtime):
     py agent.py --selftest
@@ -24,7 +27,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 AGENT_NAME = "VLe"
@@ -34,8 +40,10 @@ KNOWLEDGE_FILE = WORK_DIR / "knowledge.txt"
 SKILLS_DIR = WORK_DIR / "skills"
 
 MODEL = os.environ.get("CURSOR_MODEL", "composer-2.5")
-API_KEY = os.environ.get("CURSOR_API_KEY")
 FAKE = os.environ.get("VLE_FAKE_MODEL") == "1"
+LOGIN_DIR = WORK_DIR / "scripts"
+AUTH_FILE = Path.home() / ".cursor" / "sdk" / "auth.json"
+_RESOLVED_KEY: str | None = None
 
 # Empty allowlist: the SDK offers no built-in tools, so the model can only talk.
 TEXT_TOOLS: list[str] = []
@@ -239,6 +247,70 @@ def finish_run(run) -> str:
     return result.result or ""
 
 
+def stored_api_key() -> str | None:
+    """Read the key Cursor's browser login already saved. Never print it."""
+    if not AUTH_FILE.exists():
+        return None
+    try:
+        data = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or data.get("version") != 1:
+        return None
+    key = data.get("apiKey")
+    if not isinstance(key, str) or not key.strip():
+        return None
+    expires = data.get("apiKeyExpiresAtMs")
+    if isinstance(expires, (int, float)) and expires <= time.time() * 1000:
+        return None
+    return key.strip()
+
+
+def browser_login() -> None:
+    """Mint a Cursor SDK login through the browser. The key stays in AUTH_FILE."""
+    node = shutil.which("node")
+    npm = shutil.which("npm")
+    if not node or not npm:
+        raise RuntimeError(
+            "Signing in needs Node.js 22 or newer on PATH. "
+            "VLe does not read CURSOR_API_KEY."
+        )
+    if not (LOGIN_DIR / "node_modules" / "@cursor" / "sdk").exists():
+        install = subprocess.run(
+            [npm, "install", "--prefix", str(LOGIN_DIR)],
+            cwd=LOGIN_DIR,
+        )
+        if install.returncode != 0:
+            raise RuntimeError(
+                "Could not install the Cursor sign-in package in scripts/."
+            )
+    login = subprocess.run([node, str(LOGIN_DIR / "cursor_login.mjs")], cwd=LOGIN_DIR)
+    if login.returncode != 0:
+        raise RuntimeError("Cursor sign-in did not finish.")
+
+
+def resolve_api_key() -> str:
+    global _RESOLVED_KEY
+    if _RESOLVED_KEY:
+        return _RESOLVED_KEY
+    key = stored_api_key()
+    if not key:
+        print(
+            "Opening a browser so you can sign in to Cursor. "
+            "The login is saved by the Cursor SDK on this computer. "
+            "No API key is placed in the environment."
+        )
+        browser_login()
+        key = stored_api_key()
+    if not key:
+        raise RuntimeError(
+            "Cursor sign-in did not leave a usable login in "
+            f"{AUTH_FILE}."
+        )
+    _RESOLVED_KEY = key
+    return key
+
+
 def one_shot(
     system: str,
     user: str,
@@ -256,7 +328,7 @@ def one_shot(
         result = Agent.prompt(
             f"{system}\n\n{user}",
             AgentOptions(
-                api_key=API_KEY,
+                api_key=resolve_api_key(),
                 model=MODEL,
                 tools=list(tools),
                 local=LocalAgentOptions(cwd=str(cwd)),
@@ -301,7 +373,7 @@ class TextSession:
         try:
             self._cm = Agent.create(
                 AgentOptions(
-                    api_key=API_KEY,
+                    api_key=resolve_api_key(),
                     model=MODEL,
                     tools=list(TEXT_TOOLS),
                     local=LocalAgentOptions(cwd=self.cwd),
@@ -675,14 +747,6 @@ def main() -> int:
     show = "--show-debate" in sys.argv
     if "--selftest" in sys.argv:
         return selftest()
-    if not API_KEY and not FAKE:
-        print(
-            "Set CURSOR_API_KEY in the shell first "
-            "(Cursor Dashboard → Integrations). "
-            "Never paste it into this file or into chat. "
-            "Tip: `py agent.py --selftest` runs the whole debate offline."
-        )
-        return 1
     question = " ".join(args) or input(f"Ask {AGENT_NAME}: ")
     try:
         print(run_pipeline(question, show=show))

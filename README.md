@@ -68,6 +68,8 @@ py chat.py
 
 That serves the page at `http://127.0.0.1:8765` and opens it in the browser. Each message runs the pipeline above. The page keeps the thread and sends earlier turns with the next question, so a follow-up to an interview question stays in the same conversation. Check **Show the argument** to see the brief, the rounds, and the verdict under the reply.
 
+Paste, drop, or attach a PDF, DOCX, or PPTX. VLe reads the text in the file and uses it in the reply. A file can be up to 8 MB, and the first 12,000 characters are kept. Scanned pages and pictures have no text layer, so they are skipped. Install `pypdf` with the requirements file before sending a PDF.
+
 A full debate still takes several Cursor runs. The window shows the current stage while it works, and it answers one message at a time.
 
 Mac/Linux: same steps with `python3`.

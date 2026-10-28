@@ -277,6 +277,35 @@
       color: var(--muted);
     }
     .hint { margin-top: 0.55rem; font-size: 0.82rem; }
+    .composer.drag { outline: 2px solid var(--focus); }
+    .files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0 0 0.55rem;
+      padding: 0;
+      list-style: none;
+    }
+    .files:empty { display: none; }
+    .files li {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.15rem 0.45rem 0.15rem 0.7rem;
+      font-size: 0.85rem;
+    }
+    .files span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .files button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 0.25rem;
+    }
+    .tools { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .file-note { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -305,15 +334,20 @@
     </div>
     <form class="composer" id="composer">
       <label for="draft">Your question</label>
-      <textarea id="draft" name="draft" rows="3" required placeholder="Ask VLe"></textarea>
+      <ul class="files" id="files" aria-label="Attached files"></ul>
+      <textarea id="draft" name="draft" rows="3" placeholder="Ask VLe, or paste a PDF, Word, or PowerPoint file"></textarea>
       <div class="row">
-        <label class="check">
-          <input id="show" type="checkbox">
-          Show the argument
-        </label>
+        <div class="tools">
+          <button class="ghost" type="button" id="attach">Attach</button>
+          <input id="picker" type="file" accept=".pdf,.docx,.pptx,application/pdf" multiple hidden>
+          <label class="check">
+            <input id="show" type="checkbox">
+            Show the argument
+          </label>
+        </div>
         <button class="primary" id="send" type="submit">Send</button>
       </div>
-      <p class="hint" id="status">A full debate uses several Cursor runs and can take a few minutes. An open question may come back as one question to you.</p>
+      <p class="hint" id="status">Paste or attach a PDF, DOCX, or PPTX. VLe reads the text. A full debate can take a few minutes.</p>
     </form>
   </div>
   <script>
@@ -325,12 +359,18 @@
     const statusLine = document.getElementById("status");
     const banner = document.getElementById("banner");
     const composer = document.getElementById("composer");
+    const filesBox = document.getElementById("files");
+    const attach = document.getElementById("attach");
+    const picker = document.getElementById("picker");
     const STORE = "vle-chat-v1";
     const SHOW_STORE = "vle-show-argument";
+    const FILE_TYPES = ["pdf", "docx", "pptx"];
 
     let messages = loadMessages();
     let pending = null;
     let busy = false;
+    let reading = 0;
+    let attachments = [];
 
     show.checked = localStorage.getItem(SHOW_STORE) === "1";
     show.addEventListener("change", () => {
@@ -363,10 +403,38 @@
       if (busy) return;
       messages = [];
       pending = null;
+      attachments = [];
       saveMessages();
+      renderFiles();
       setStatus("The conversation is cleared.");
       render();
       draft.focus();
+    });
+    attach.addEventListener("click", () => picker.click());
+    picker.addEventListener("change", () => {
+      addFiles(picker.files);
+      picker.value = "";
+    });
+    draft.addEventListener("paste", (event) => {
+      const files = event.clipboardData && event.clipboardData.files;
+      if (!files || !files.length) return;
+      event.preventDefault();
+      addFiles(files);
+    });
+    window.addEventListener("dragover", (event) => {
+      if (hasFiles(event)) {
+        event.preventDefault();
+        composer.classList.add("drag");
+      }
+    });
+    window.addEventListener("drop", (event) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      composer.classList.remove("drag");
+      addFiles(event.dataTransfer.files);
+    });
+    window.addEventListener("dragleave", (event) => {
+      if (!event.relatedTarget) composer.classList.remove("drag");
     });
 
     render();
@@ -391,17 +459,94 @@
 
     function setBusy(next) {
       busy = next;
-      send.disabled = next;
+      const locked = next || reading > 0;
+      send.disabled = locked;
       clearButton.disabled = next;
       draft.disabled = next;
+      attach.disabled = next;
+      picker.disabled = next;
       send.textContent = next ? "Working" : "Send";
+    }
+
+    function hasFiles(event) {
+      return event.dataTransfer && [...event.dataTransfer.types].includes("Files");
+    }
+
+    function renderFiles() {
+      filesBox.innerHTML = attachments.map((file, index) => (
+        "<li><span>" + esc(file.name) +
+        (file.notice ? ' <span class="file-note">' + esc(file.notice) + "</span>" : "") +
+        '</span><button type="button" data-index="' + index + '" aria-label="Remove ' +
+        esc(file.name) + '">×</button></li>'
+      )).join("");
+    }
+
+    filesBox.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button || busy) return;
+      attachments.splice(Number(button.dataset.index), 1);
+      renderFiles();
+    });
+
+    async function addFiles(fileList) {
+      const incoming = [...fileList];
+      for (const file of incoming) {
+        if (attachments.length >= 4) {
+          setStatus("Attach up to 4 files.");
+          break;
+        }
+        const ext = (file.name.split(".").pop() || "").toLowerCase();
+        if (!FILE_TYPES.includes(ext)) {
+          setStatus("VLe reads PDF, DOCX, and PPTX files.");
+          continue;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+          setStatus(file.name + " is larger than 8 MB.");
+          continue;
+        }
+        reading += 1;
+        setBusy(busy);
+        setStatus("Reading " + file.name + "…");
+        try {
+          const response = await fetch("/api/extract", {
+            method: "POST",
+            headers: { "X-Filename": encodeURIComponent(file.name) },
+            body: file
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "VLe could not read that file.");
+          attachments.push({
+            name: payload.name,
+            text: payload.text,
+            notice: payload.truncated ? "First 12,000 characters." : ""
+          });
+          setStatus("Read " + payload.name + ".");
+        } catch (err) {
+          setStatus(err.message || "VLe could not read that file.");
+        } finally {
+          reading -= 1;
+          setBusy(busy);
+        }
+      }
+      renderFiles();
     }
 
     async function submitMessage() {
       const text = draft.value.trim();
-      if (!text || busy) return;
-      const nextMessages = messages.concat([{ role: "user", text }]);
+      const docs = attachments.map((file) => ({
+        name: file.name,
+        text: file.text,
+        notice: file.notice
+      }));
+      if (busy || reading) return;
+      if (!text && !docs.length) {
+        setStatus("Type a message or attach a PDF, Word, or PowerPoint file.");
+        return;
+      }
+      const nextMessages = messages.concat([{ role: "user", text, documents: docs }]);
       draft.value = "";
+      attachments = [];
+      renderFiles();
       messages = nextMessages;
       pending = { stages: [], show: show.checked };
       saveMessages();
@@ -414,22 +559,26 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: nextMessages.map((turn) => ({ role: turn.role, text: turn.text }))
+            messages: nextMessages.map((turn) => ({
+              role: turn.role,
+              text: turn.text,
+              documents: turn.documents || []
+            }))
           })
         });
       } catch (err) {
-        restoreDraft(text, "The chat could not reach VLe.");
+        restoreDraft(text, "The chat could not reach VLe.", docs);
         return;
       }
       let payload = {};
       try {
         payload = await created.json();
       } catch (err) {
-        restoreDraft(text, "VLe sent a reply the page could not read.");
+        restoreDraft(text, "VLe sent a reply the page could not read.", docs);
         return;
       }
       if (!created.ok) {
-        restoreDraft(text, payload.error || "VLe could not start.");
+        restoreDraft(text, payload.error || "VLe could not start.", docs);
         return;
       }
       try {
@@ -442,12 +591,14 @@
       }
     }
 
-    function restoreDraft(text, message) {
+    function restoreDraft(text, message, docs) {
       messages = messages.slice(0, -1);
       draft.value = text;
+      attachments = docs || [];
       pending = null;
       saveMessages();
       setBusy(false);
+      renderFiles();
       setStatus(message);
       render();
     }
@@ -502,6 +653,15 @@
       return { kind: "answer", body: (raw || "").trim() };
     }
 
+    function userBody(turn) {
+      const lines = [];
+      if (turn.text) lines.push(esc(turn.text));
+      (turn.documents || []).forEach((file) => {
+        lines.push(esc(file.name));
+      });
+      return lines.join("<br>") || "Attached file";
+    }
+
     function esc(value) {
       return String(value).replace(/[&<>"']/g, (ch) => ({
         "&": "&amp;",
@@ -528,7 +688,7 @@
       }
       const parts = messages.map((turn) => {
         if (turn.role === "user") {
-          return '<article class="msg user"><p class="who">You</p><div class="bubble">' + esc(turn.text) + "</div></article>";
+          return '<article class="msg user"><p class="who">You</p><div class="bubble">' + userBody(turn) + "</div></article>";
         }
         const view = present(turn.text);
         const chip = view.kind === "interview"

@@ -181,6 +181,11 @@ def load_knowledge() -> str:
     return KNOWLEDGE_FILE.read_text(encoding="utf-8", errors="replace").strip()[:2000]
 
 
+def request_without_files(question: str) -> str:
+    """Drop attached-file text before looking for a code path."""
+    return question.split("\n\n--- begin file:", 1)[0]
+
+
 def find_code_target(question: str) -> Path | None:
     """A path the user named, or this workspace when they ask how code works."""
     candidates: list[str] = []
@@ -523,7 +528,7 @@ def run_rea(
     index: dict[str, Skill],
     record: list[list[str]] | None,
 ) -> str:
-    target = find_code_target(question)
+    target = find_code_target(request_without_files(question))
     if target is None:
         brief = "no target"
         mark(stages, show, "REA", brief)
